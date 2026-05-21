@@ -7,6 +7,11 @@ namespace Code
     {
         private NetworkManager m_NetworkManager;
 
+        private float m_GlobalEffectTimer = 0f;
+        private float m_EffectDurationTimer = 0f;
+        private bool m_IsEffectActive = false;
+        private CodePlayer m_SelectedPlayer = null;
+
         private void Awake()
         {
             m_NetworkManager = GetComponent<NetworkManager>();
@@ -60,6 +65,69 @@ namespace Code
                     player.CycleModeServerRpc();
                 }
             }
+        }
+
+        private void Update()
+        {
+            // Solo el servidor lleva la cuenta del tiempo global
+            if (m_NetworkManager == null || !m_NetworkManager.IsServer) return;
+
+            if (!m_IsEffectActive)
+            {
+                m_GlobalEffectTimer += Time.deltaTime;
+                if (m_GlobalEffectTimer >= 20f)
+                {
+                    ActivateRandomEffect();
+                }
+            }
+            else
+            {
+                m_EffectDurationTimer += Time.deltaTime;
+                if (m_EffectDurationTimer >= 10f)
+                {
+                    DeactivateRandomEffect();
+                }
+            }
+        }
+
+        private void ActivateRandomEffect()
+        {
+            var clients = m_NetworkManager.ConnectedClientsList;
+            if (clients.Count == 0) return;
+
+            // 1. Elegimos un índice al azar de la lista de clientes conectados
+            int randomIndex = Random.Range(0, clients.Count);
+            var targetClient = clients[randomIndex];
+
+            if (targetClient != null && targetClient.PlayerObject != null)
+            {
+                // 2. Obtenemos el script CodePlayer de ese jugador elegido
+                m_SelectedPlayer = targetClient.PlayerObject.GetComponent<CodePlayer>();
+
+                if (m_SelectedPlayer != null)
+                {
+                    // 3. Le aplicamos el efecto (1: Ventaja, 2: Desventaja)
+                    m_SelectedPlayer.CurrentEffect.Value = Random.Range(1, 3);
+
+                    m_IsEffectActive = true;
+                    m_GlobalEffectTimer = 0f;
+                    m_EffectDurationTimer = 0f;
+                }
+            }
+        }
+
+        private void DeactivateRandomEffect()
+        {
+            // Si el jugador seleccionado sigue en la partida, le quitamos el efecto
+            if (m_SelectedPlayer != null)
+            {
+                m_SelectedPlayer.CurrentEffect.Value = 0;
+                m_SelectedPlayer = null;
+            }
+
+            m_IsEffectActive = false;
+            m_GlobalEffectTimer = 0f;
+            m_EffectDurationTimer = 0f;
         }
     }
 }

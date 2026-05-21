@@ -12,21 +12,48 @@ namespace Code
         private float m_ClientVerticalVelocity = 0f;
         private bool m_ClientJumpRequested;
 
-        public float speed = 5f;
         private float m_VerticalVelocity = 0f;
         private Vector2 m_ServerInput;
         private bool m_JumpRequested;
         private Vector2 m_LastInput;
-        public float mapLimitX = 5f; // Límite en el eje X (izquierda/derecha)
-        public float mapLimitZ = 5f; // Límite en el eje Z (arriba/abajo)
+        private float mapLimitX = 5f; // Límite en el eje X (izquierda/derecha)
+        private float mapLimitZ = 5f; // Límite en el eje Z (arriba/abajo)
 
+        public NetworkVariable<int> CurrentEffect = new NetworkVariable<int>(0); // 0: Normal, 1: Rápido(Verde), 2: Lento(Rojo)
 
+        private float m_BaseSpeed = 5f;
         private Renderer m_Renderer;
+        public float currentSpeed;
 
         private void Awake()
         {
             m_Renderer = GetComponent<Renderer>();
-            m_NetTransform = GetComponent<Unity.Netcode.Components.NetworkTransform>(); // <-- Añade esto
+            m_NetTransform = GetComponent<Unity.Netcode.Components.NetworkTransform>();
+        }
+
+        public override void OnNetworkSpawn()
+        {
+            CurrentEffect.OnValueChanged += OnEffectChanged;
+            UpdateVisuals(CurrentEffect.Value);
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            CurrentEffect.OnValueChanged -= OnEffectChanged;
+        }
+
+        private void OnEffectChanged(int previousValue, int newValue)
+        {
+            UpdateVisuals(newValue);
+        }
+
+        private void UpdateVisuals(int effectIndex)
+        {
+            if (m_Renderer == null) return;
+
+            if (effectIndex == 1) m_Renderer.material.color = Color.green;
+            else if (effectIndex == 2) m_Renderer.material.color = Color.red;
+            else m_Renderer.material.color = Color.grey; // Color por defecto
         }
 
         [Rpc(SendTo.Server)]
@@ -51,8 +78,12 @@ namespace Code
 
         private void SimulateMovement(Vector2 input, ref bool jumpRequested, ref float verticalVelocity)
         {
+            currentSpeed = m_BaseSpeed;
+            if (CurrentEffect.Value == 1) currentSpeed = m_BaseSpeed * 2f;      // Ventaja: Doble de rápido
+            else if (CurrentEffect.Value == 2) currentSpeed = m_BaseSpeed * 0.5f; // Desventaja: Mitad de rápido
+
             Vector3 moveDir = new Vector3(input.x, 0, input.y).normalized;
-            transform.Translate(moveDir * (speed * Time.deltaTime), Space.World);
+            transform.Translate(moveDir * (currentSpeed * Time.deltaTime), Space.World);
 
             if (transform.position.y > 1f || jumpRequested)
             {
